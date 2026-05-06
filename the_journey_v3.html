@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>The Journey — Financial Life Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b0b15;--bg2:#13131f;--bg3:#1a1a2e;--text:#f0ede4;--text2:#9896a0;--text3:#4e4c5e;--border:#252535;--border2:#2e2e42;--gold:#d4af37;--gold-dim:rgba(212,175,55,0.12);--red:#d45678;--red-dim:rgba(212,86,120,0.1);--green:#1a9e75;--r:12px;--rs:8px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased}
+#app{min-height:100vh}
+.serif{font-family:'DM Serif Display',serif}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+input[type=text]{background:var(--bg3);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:16px;padding:13px 16px;border-radius:var(--rs);width:100%;outline:none;transition:border-color .2s}
+input[type=text]:focus{border-color:var(--gold)}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;outline:none;cursor:pointer}
+input[type=range].gold{background:var(--border2)}input[type=range].gold::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;background:var(--gold);border-radius:50%;cursor:pointer}input[type=range].gold::-moz-range-thumb{width:18px;height:18px;background:var(--gold);border-radius:50%;cursor:pointer;border:none}
+select{background:var(--bg3);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:14px;padding:10px 12px;border-radius:var(--rs);width:100%;outline:none;cursor:pointer}
+.btn{display:block;width:100%;padding:14px;border-radius:var(--rs);font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.3px;border:none;text-align:center}
+.btn-gold{background:var(--gold);color:#0b0b15}.btn-gold:hover{background:#e8cc6e}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2)}.btn-ghost:hover{background:var(--bg3);color:var(--text)}
+.btn-sm{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:var(--rs);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:transparent;color:var(--text2);transition:all .15s}.btn-sm:hover{background:var(--bg3);color:var(--text)}
+.btn:disabled{opacity:.3;cursor:not-allowed}.btn:not(:disabled):active{transform:scale(.98)}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px}
+.alloc-card{width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);cursor:pointer;font-family:inherit;color:var(--text);text-align:left;transition:all .15s;display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.fu{animation:fadeUp .35s ease forwards}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ─── STATIC CONFIG ─────────────────────────────────────────────────────────────
+const GROSS_MONTHLY  = 125000;
+const EMPLOYEE_PF    = 6000;
+const MONTHLY_TDS    = 10833;
+const TAKE_HOME      = GROSS_MONTHLY - EMPLOYEE_PF - MONTHLY_TDS; // 108167
+
+const ALLOCS = [
+  {id:'equity',  label:'Index fund',           desc:'100% Equity index fund',            rate:0.12,  rateLabel:'~12%/yr', risk:'Medium-High', color:'#6e6bcf', bars:[{l:'Index Fund',p:100,c:'#6e6bcf'}]},
+  {id:'balanced',label:'Balanced',             desc:'60% Index · 25% Gold · 15% FD',    rate:0.10,  rateLabel:'~10%/yr', risk:'Medium',      color:'#1a9e75', bars:[{l:'Index',p:60,c:'#6e6bcf'},{l:'Gold',p:25,c:'#d4af37'},{l:'FD',p:15,c:'#1a9e75'}]},
+  {id:'gold',    label:'Index + Gold',         desc:'60% Index fund · 40% Gold',         rate:0.105, rateLabel:'~10.5%/yr',risk:'Medium',     color:'#d4af37', bars:[{l:'Index',p:60,c:'#6e6bcf'},{l:'Gold',p:40,c:'#d4af37'}]},
+  {id:'fd',      label:'Capital preservation', desc:'30% Index fund · 70% FD',           rate:0.075, rateLabel:'~7.5%/yr',risk:'Low',         color:'#4e4c5e', bars:[{l:'Index',p:30,c:'#6e6bcf'},{l:'FD',p:70,c:'#1a9e75'}]},
+];
+
+const DEPENDANTS_OPTS = [
+  {v:'none',         l:'None'},
+  {v:'parents-semi', l:'Parents (semi-dependent)'},
+  {v:'parents-full', l:'Parents (fully dependent)'},
+  {v:'spouse',       l:'Spouse — no kids'},
+  {v:'spouse-1',     l:'Spouse + 1 child'},
+  {v:'spouse-2',     l:'Spouse + 2 children'},
+  {v:'full',         l:'Parents + Spouse + children'},
+];
+
+const PC = {
+  "The Hustle Years":   {color:"#e4a317",bg:"rgba(228,163,23,0.1)",text:"#e4a317"},
+  "The Balancing Act":  {color:"#1a9e75",bg:"rgba(26,158,117,0.1)",text:"#1a9e75"},
+  "Peak Years":         {color:"#6e6bcf",bg:"rgba(110,107,207,0.1)",text:"#6e6bcf"},
+  "The Final Stretch":  {color:"#d45678",bg:"rgba(212,86,120,0.1)",text:"#d45678"},
+};
+
+const TRANS = {3:{phase:"The Balancing Act",age:30},8:{phase:"Peak Years",age:40},12:{phase:"The Final Stretch",age:54}};
+const BASE = 200;
+
+// ─── EVENTS ───────────────────────────────────────────────────────────────────
+const EVENTS = [
+  {id:1,age:24,phase:"The Hustle Years",title:"First bonus",
+   scenario:"Three months into your first job, Diwali arrives — and so does a surprise. ₹1 Lakh lands in your account overnight. Your manager says you've done well. It is the most money you've had in one shot.",
+   choices:[
+    {id:'A',text:"Buy the latest iPhone — you've earned it",corpus:0,tag:"Gadget"},
+    {id:'B',text:"Open a fixed deposit at the bank",corpus:8,tag:"Fixed deposit"},
+    {id:'C',text:"Invest in mutual funds — let it compound over time",corpus:50,tag:"Mutual fund"},
+    {id:'D',text:"Book that solo trip you've been postponing",corpus:0,tag:"Travel"},
+  ]},
+  {id:2,age:26,phase:"The Hustle Years",title:"The big offer",
+   scenario:"A startup you genuinely admire reaches out. They want you. The catch — 20% pay cut on your current ₹18L CTC. But they're offering ESOPs that could be worth a lot — or absolutely nothing. Your current job is stable, growing, and comfortable.",
+   choices:[
+    {id:'A',text:"Take the leap — join the startup and bet on the ESOPs",corpus:80,tag:"Startup bet"},
+    {id:'B',text:"Stay put — stability and steady growth matter",corpus:25,tag:"Stable ground"},
+    {id:'C',text:"Use the offer to negotiate a raise at your current job",corpus:40,tag:"Smart leverage"},
+    {id:'D',text:"Join only if they match your current salary",corpus:30,tag:"Negotiated"},
+  ]},
+  {id:3,age:28,phase:"The Hustle Years",title:"The wedding",
+   scenario:"You're getting married. Families have opinions. Your partner dreams of a destination wedding in Goa — ₹20 Lakhs all in. A beautiful city function runs about ₹8 Lakhs. A small intimate ceremony would be ₹3 Lakhs. The court registration plus celebration route is under ₹1 Lakh.",
+   choices:[
+    {id:'A',text:"Destination wedding — Goa, sunset, the whole dream",corpus:-15,tag:"Grand"},
+    {id:'B',text:"Beautiful city function — warm, memorable, grounded",corpus:-5,tag:"Traditional"},
+    {id:'C',text:"Intimate ceremony with just family — invest the rest",corpus:25,tag:"Simple"},
+    {id:'D',text:"Court registration plus a party with close ones",corpus:60,tag:"Minimal"},
+  ]},
+  {id:4,age:30,phase:"The Balancing Act",title:"The crash",
+   scenario:"Markets have fallen 40% in three months. Your mutual fund portfolio — ₹5 Lakhs built over 4 years — shows ₹3 Lakhs on screen today. Your phone is buzzing. Friends are selling. Family is worried. Numbers are deep in the red.",
+   choices:[
+    {id:'A',text:"Sell everything — stop the bleeding right now",corpus:-30,tag:"Exit"},
+    {id:'B',text:"Stay invested, do nothing — trust the process",corpus:15,tag:"Hold"},
+    {id:'C',text:"This is a sale — invest more while prices are low",corpus:50,tag:"Buy more"},
+    {id:'D',text:"Withdraw half for safety, keep the rest invested",corpus:-5,tag:"Partial exit"},
+  ]},
+  {id:5,age:32,phase:"The Balancing Act",title:"The first car",
+   scenario:"The commute is taking a toll. A premium sedan is ₹15 Lakhs — you'd need a ₹10L loan. A reliable hatchback is ₹7 Lakhs with no loan. A well-maintained second-hand car does the job at ₹3 Lakhs. Or skip entirely — Ola, Metro, invest the money.",
+   choices:[
+    {id:'A',text:"Premium sedan — you've worked hard for this",corpus:-20,tag:"Premium",
+     loan:{name:"Car loan",principal:1000000,annualRate:0.09,tenureMonths:60}},
+    {id:'B',text:"Reliable mid-range car — no loan, no stress",corpus:-5,tag:"Practical"},
+    {id:'C',text:"Second-hand car — sensible, gets the job done",corpus:5,tag:"Used car"},
+    {id:'D',text:"No car — use Ola and Metro, invest the rest",corpus:40,tag:"No car"},
+  ]},
+  {id:6,age:34,phase:"The Balancing Act",title:"Rent or buy?",
+   scenario:"You've rented for a decade. A 2BHK in your city costs ₹90 Lakhs. EMI would be around ₹65,000 per month for 20 years. Your rent right now is your set amount. Your parents say ghar lelo beta — now or never. Your financial advisor has a different view.",
+   choices:[
+    {id:'A',text:"Buy now — apna ghar is worth every rupee",corpus:20,tag:"Buy",
+     loan:{name:"Home loan",principal:7200000,annualRate:0.085,tenureMonths:240}},
+    {id:'B',text:"Keep renting — invest the difference in equity",corpus:35,tag:"Stay renting"},
+    {id:'C',text:"Buy a smaller flat in the suburbs — EMI ₹35K",corpus:10,tag:"Smaller flat",
+     loan:{name:"Home loan (suburb)",principal:3500000,annualRate:0.085,tenureMonths:240}},
+    {id:'D',text:"Wait 3 years — bigger down payment, smaller loan",corpus:25,tag:"Wait"},
+  ]},
+  {id:7,age:36,phase:"The Balancing Act",title:"Family emergency",
+   scenario:"Your father needs a major surgery. Hospital bill: ₹7 Lakhs. Insurance covers ₹3 Lakhs. You need ₹4 Lakhs urgently. You have ₹6 Lakhs in savings. Your siblings are willing to help if you ask.",
+   choices:[
+    {id:'A',text:"Pay entirely from your own savings — no second thought",corpus:-10,tag:"Own savings"},
+    {id:'B',text:"Take a personal loan — keep your savings intact",corpus:-15,tag:"Personal loan",
+     loan:{name:"Personal loan",principal:400000,annualRate:0.14,tenureMonths:36}},
+    {id:'C',text:"Split the cost with siblings — it is a family matter",corpus:-3,tag:"Family split"},
+    {id:'D',text:"Break your emergency FD — that is exactly what it is for",corpus:-8,tag:"Break FD"},
+  ]},
+  {id:8,age:38,phase:"The Balancing Act",title:"Planning ahead",
+   scenario:"Your child is 6 years old. College is 12 years away but will cost ₹30–40 Lakhs by then. Your financial planner says start a plan today. Your spouse says there is plenty of time. What do you do right now?",
+   choices:[
+    {id:'A',text:"Start a ₹10,000 per month SIP just for their education",corpus:40,tag:"SIP plan"},
+    {id:'B',text:"Buy an education endowment insurance plan",corpus:10,tag:"Insurance plan"},
+    {id:'C',text:"Put ₹5 Lakhs in a fixed deposit right now",corpus:8,tag:"FD plan"},
+    {id:'D',text:"Nothing today — plenty of time to sort it later",corpus:-15,tag:"No plan"},
+  ]},
+  {id:9,age:40,phase:"Peak Years",title:"The big raise",
+   scenario:"It is a landmark year. You have been promoted. Salary jumps from ₹25 Lakhs to ₹40 Lakhs. An extra ₹15 Lakhs per year just entered your life. You have waited a long time for this moment.",
+   choices:[
+    {id:'A',text:"Upgrade everything — bigger home, better car, better holidays",corpus:-10,tag:"Lifestyle upgrade"},
+    {id:'B',text:"Invest most of the hike — small quality-of-life bump only",corpus:80,tag:"Invest heavy"},
+    {id:'C',text:"Half invested, half better life — a deliberate upgrade",corpus:40,tag:"Balanced"},
+    {id:'D',text:"Use the entire raise to first clear all outstanding loans",corpus:30,tag:"Clear loans"},
+  ]},
+  {id:10,age:44,phase:"Peak Years",title:"The family dream trip",
+   scenario:"Your kids are 14 and 10. This window will not come back — young enough to be excited, old enough to remember it. A 3-week family trip across Europe: 5 countries, ₹5 Lakhs all in. You can afford it. But these are also your peak earning years.",
+   choices:[
+    {id:'A',text:"Book it — memories with family are priceless",corpus:-2,tag:"Europe trip"},
+    {id:'B',text:"Plan a stunning India trip instead — ₹80,000",corpus:2,tag:"India trip"},
+    {id:'C',text:"Postpone by 2 years — save more first",corpus:0,tag:"Delayed"},
+    {id:'D',text:"Skip the trip — they can travel with their school",corpus:3,tag:"Skip trip"},
+  ]},
+  {id:11,age:47,phase:"Peak Years",title:"The VRS offer",
+   scenario:"Company restructuring. You are offered Voluntary Retirement — ₹80 Lakhs payout, two years of salary. You are 47. Your corpus is decent but retirement at 60 was the plan. Life here has been stable. But ₹80 Lakhs is sitting on the table.",
+   choices:[
+    {id:'A',text:"Accept and launch your own business",corpus:60,tag:"Start business"},
+    {id:'B',text:"Accept, take 6 months off, then find a new role",corpus:25,tag:"Recharge"},
+    {id:'C',text:"Decline — negotiate hard to stay in the company",corpus:30,tag:"Stay"},
+    {id:'D',text:"Accept, invest the corpus, shift to consulting work",corpus:50,tag:"Freelance"},
+  ]},
+  {id:12,age:50,phase:"Peak Years",title:"The health report",
+   scenario:"Annual checkup. Your doctor shows you numbers you do not like. She recommends a full routine — gym, nutritionist, regular tests. Full package: ₹80,000 a year. You feel okay on most days. But the tests do not lie.",
+   choices:[
+    {id:'A',text:"All in — invest in your health like it is your most important asset",corpus:20,tag:"Full investment"},
+    {id:'B',text:"Gym only — manage the diet yourself at home",corpus:8,tag:"Partial"},
+    {id:'C',text:"Morning walks and home cooking — zero cost",corpus:5,tag:"Free route"},
+    {id:'D',text:"You feel fine — will check again next year",corpus:-20,tag:"Ignore"},
+  ]},
+  {id:13,age:54,phase:"The Final Stretch",title:"Child's wedding",
+   scenario:"Your child is getting married. Their dream: a grand celebration — ₹25 Lakhs. You are 54, retirement is 6 years away. You have built a corpus. But this is a significant portion of it.",
+   choices:[
+    {id:'A',text:"Fund it fully — you want the best for them",corpus:-20,tag:"Fund fully"},
+    {id:'B',text:"Contribute ₹10 Lakhs — they handle the rest",corpus:-5,tag:"Shared"},
+    {id:'C',text:"Suggest a beautiful but simpler celebration",corpus:-2,tag:"Simpler"},
+    {id:'D',text:"Take a personal loan to fund the full amount",corpus:-25,tag:"Loan",
+     loan:{name:"Wedding loan",principal:2500000,annualRate:0.14,tenureMonths:60}},
+  ]},
+  {id:14,age:57,phase:"The Final Stretch",title:"Early or on time?",
+   scenario:"Your financial advisor has good news — you can comfortably retire at 58, one year from now. The corpus is solid. Or you push through to 60 for a bigger, more comfortable cushion. Three more years. What feels right?",
+   choices:[
+    {id:'A',text:"Retire at 58 — peace and rest, earned",corpus:0,tag:"Early retire"},
+    {id:'B',text:"Work till 60 — the extra cushion matters",corpus:30,tag:"Work to 60"},
+    {id:'C',text:"Semi-retire at 58 — consult part-time, live fully",corpus:15,tag:"Semi-retire"},
+    {id:'D',text:"Start a brand-new passion-based work after 58",corpus:10,tag:"Encore career"},
+  ]},
+  {id:15,age:59,phase:"The Final Stretch",title:"One last choice",
+   scenario:"A relative you were close to has left you ₹30 Lakhs in their will. It arrives quietly, emotionally, unexpectedly. You are one year from retirement. One final decision before the journey ends.",
+   choices:[
+    {id:'A',text:"Put it all in fixed deposits — protect what you have",corpus:30,tag:"Safe"},
+    {id:'B',text:"Invest in equity for the next 10 to 15 years",corpus:60,tag:"Growth"},
+    {id:'C',text:"Pass it on to your children as early inheritance",corpus:15,tag:"Legacy"},
+    {id:'D',text:"Use it to tick off your entire bucket list — now",corpus:0,tag:"Experience"},
+  ]},
+];
+
+// ─── STATE ─────────────────────────────────────────────────────────────────────
+let G = {
+  screen:'intro', name:'',
+  expenses:{ rent:20, food:10, transport:5 },
+  dependants:'none',
+  sipBase:5000, sipStepUps:[], allocation:'equity', allocHistory:[],
+  idx:0, decisions:[], picked:null, ratings:{}, log:[],
+  debts:[], // [{id,name,principal,balance,annualRate,tenureMonths,startAge,emi}]
+  expPanelOpen:false,
+};
+
+// ─── MATH ──────────────────────────────────────────────────────────────────────
+function sipFV(m,y,r){if(y<=0||m<=0)return 0;const i=r/12,n=Math.round(y*12);return m*((Math.pow(1+i,n)-1)/i)*(1+i)/100000;}
+function getRate(){return ALLOCS.find(a=>a.id===G.allocation)?.rate||0.12;}
+function totalSipFV(){const r=getRate();let t=sipFV(G.sipBase,36,r);for(const s of G.sipStepUps)t+=sipFV(s.delta,60-s.atAge,r);return t;}
+function evImpact(){return G.decisions.reduce((s,d)=>s+d.corpus,0);}
+function projected(x=0){return Math.round(BASE+evImpact()+x+totalSipFV());}
+function pctBar(c){return Math.min(Math.max((c-30)/(760-30),0),1)*100;}
+function fmt(l){if(l>=100)return`₹${(l/100).toFixed(2)} Cr`;if(l>0)return`₹${Math.round(l)}L`;if(l<0)return`-₹${Math.round(Math.abs(l))}L`;return'₹0';}
+function fmtINR(n){return'₹'+Math.round(n).toLocaleString('en-IN');}
+
+// debt math
+function calcEMI(p,r,n){if(n<=0)return 0;const i=r/12;if(i===0)return p/n;return p*i*Math.pow(1+i,n)/(Math.pow(1+i,n)-1);}
+function loanBalance(p,r,n,paid){if(paid>=n)return 0;const i=r/12;const emi=calcEMI(p,r,n);if(i===0)return Math.max(0,p*(1-paid/n));return Math.max(0,p*Math.pow(1+i,paid)-emi*(Math.pow(1+i,paid)-1)/i);}
+
+function addDebt(loan,age){
+  const emi=Math.round(calcEMI(loan.principal,loan.annualRate,loan.tenureMonths));
+  G.debts.push({...loan,balance:loan.principal,startAge:age,emi});}
+
+function advanceDebts(fromAge,toAge){
+  for(const d of G.debts){
+    if(d.balance<=0)continue;
+    const paid=(toAge-d.startAge)*12;
+    d.balance=Math.round(loanBalance(d.principal,d.annualRate,d.tenureMonths,paid));}}
+
+function totalDebt(){return G.debts.reduce((s,d)=>s+Math.max(0,d.balance),0);}
+function totalEMI(){return G.debts.filter(d=>d.balance>0).reduce((s,d)=>s+d.emi,0);}
+
+// expense helpers
+function expenseRent(){return Math.round(TAKE_HOME*G.expenses.rent/100);}
+function expenseFood(){return Math.round(TAKE_HOME*G.expenses.food/100);}
+function expenseTransport(){return Math.round(TAKE_HOME*G.expenses.transport/100);}
+
+// ─── SHARED UI ─────────────────────────────────────────────────────────────────
+function badge(p){const ph=PC[p];return`<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;background:${ph.bg};color:${ph.color}">${p.toUpperCase()}</span>`;}
+
+function allocBars(bars){return`<div style="display:flex;height:4px;border-radius:2px;overflow:hidden;gap:1px">${bars.map(b=>`<div style="width:${b.p}%;background:${b.c};border-radius:2px"></div>`).join('')}</div><div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">${bars.map(b=>`<span style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${b.c}"></span>${b.l} ${b.p}%</span>`).join('')}</div>`;}
+
+function corpusAndDebtMeters(previewExtra=null){
+  const base=projected(),disp=previewExtra!==null?projected(previewExtra):base;
+  const delta=previewExtra!==null?projected(previewExtra)-base:null;
+  const p=pctBar(disp);
+  const alloc=ALLOCS.find(a=>a.id===G.allocation)||ALLOCS[0];
+  const debt=totalDebt(),emi=totalEMI();
+  const dp=Math.min(debt/7200000,1)*100;
+
+  return`<div style="background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 20px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Projected corpus at 60</div>
+        ${delta!==null?`<div style="font-size:11px;font-weight:600;margin-top:2px;color:${delta>=0?'#1a9e75':'#d45678'}">${delta>0?'▲':'▼'} ${fmt(Math.abs(delta))} if you choose this</div>`:''}
+      </div>
+      <div style="text-align:right">
+        <div id="corpusNum" class="serif" style="font-size:24px;color:var(--gold);line-height:1">${fmt(disp)}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">${alloc.label} · ${alloc.rateLabel}</div>
+      </div>
+    </div>
+    <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:3px">
+      <div id="corpusFill" style="height:100%;width:${p}%;background:linear-gradient(90deg,#9b7b20,var(--gold),#e8cc6e);border-radius:3px;transition:width .5s"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-bottom:${debt>0?'10px':'0'}">
+      <span>Base ₹2Cr · Events ${evImpact()>=0?'+':''}${fmt(evImpact())}</span>
+      <span>SIP +${fmt(Math.round(totalSipFV()))}</span>
+    </div>
+    ${debt>0?`
+    <div style="padding-top:8px;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em">Active debt</span>
+        <div style="text-align:right">
+          <span style="font-size:13px;font-weight:700;color:#d45678">${fmt(debt/100000)}</span>
+          <span style="font-size:10px;color:var(--text3);margin-left:6px">EMI ${fmtINR(emi)}/mo</span>
+        </div>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${dp}%;background:linear-gradient(90deg,#a02545,#d45678);border-radius:2px;transition:width .5s"></div>
+      </div>
+    </div>`:'<div style="font-size:10px;color:#1a9e75">No active debt ✓</div>'}
+  </div>`;}
+
+function expensePanel(){
+  return`<div id="expPanel" style="display:${G.expPanelOpen?'block':'none'};background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:14px;margin-bottom:12px">
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-weight:600">Adjust your monthly expense split</div>
+    ${[
+      {key:'rent',label:'Rent',min:5,max:50,def:20},
+      {key:'food',label:'Food',min:3,max:25,def:10},
+      {key:'transport',label:'Transport',min:1,max:20,def:5}
+    ].map(e=>`
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="font-size:12px;color:var(--text2)">${e.label}</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text)">
+          <span id="exp${e.key}Pct">${G.expenses[e.key]}</span>% = <span id="exp${e.key}Amt">${fmtINR(TAKE_HOME*G.expenses[e.key]/100)}</span>/mo
+        </span>
+      </div>
+      <input type="range" class="gold" min="${e.min}" max="${e.max}" step="1" value="${G.expenses[e.key]}" id="slider_${e.key}">
+    </div>`).join('')}
+    <button class="btn-sm" id="resetExpBtn" style="margin-top:4px">↺ Reset to defaults</button>
+  </div>`;}
+
+// ─── SCREENS ───────────────────────────────────────────────────────────────────
+function renderIntro(){
+  return`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px 24px" class="fu">
+    <div style="max-width:440px;width:100%;text-align:center">
+      <div style="font-size:52px;margin-bottom:18px">🗺️</div>
+      <h1 class="serif" style="font-size:40px;line-height:1.1;margin-bottom:10px">The Journey</h1>
+      <p style="color:var(--text2);font-size:17px;line-height:1.7;margin-bottom:48px">Age 24 to 60.<br>15 moments. Your story.</p>
+      <input type="text" id="ni" placeholder="Enter your name" value="${G.name}" autocomplete="off" style="margin-bottom:14px;font-size:17px">
+      <button class="btn btn-gold" id="startBtn" ${G.name.trim()?'':'disabled'}>Begin →</button>
+    </div>
+  </div>`;}
+
+function renderProfile(){
+  const totalExpPct=G.expenses.rent+G.expenses.food+G.expenses.transport;
+  const depLabel=DEPENDANTS_OPTS.find(d=>d.v===G.dependants)?.l||'None';
+
+  return`<div style="padding:28px 20px;max-width:600px;margin:0 auto" class="fu">
+    <div style="margin-bottom:22px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Your starting point</div>
+      <h1 class="serif" style="font-size:28px;margin-bottom:4px">${G.name}'s financial profile</h1>
+      <p style="color:var(--text2);font-size:14px">Age 24 · First job · Clean slate</p>
+    </div>
+
+    <!-- Income block (fixed/calculated) -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px">INCOME</div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px">
+      ${[
+        {l:'Annual CTC',v:'₹15,00,000',dim:false,note:''},
+        {l:'Monthly gross salary',v:fmtINR(GROSS_MONTHLY),dim:false,note:''},
+        {l:'Employee PF (12% of basic)',v:'-'+fmtINR(EMPLOYEE_PF)+'/month',dim:true,note:'Goes into your PF account'},
+        {l:'Income tax (TDS)',v:'-'+fmtINR(MONTHLY_TDS)+'/month',dim:true,note:'New tax regime · std deduction ₹75K applied'},
+        {l:'Monthly take-home',v:fmtINR(TAKE_HOME),dim:false,highlight:true,note:'Cash in hand every month'},
+      ].map((row,i,arr)=>`
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 16px;${i<arr.length-1?'border-bottom:1px solid var(--border);':''}${row.highlight?'background:var(--gold-dim);':''}">
+        <div>
+          <div style="font-size:13px;color:${row.highlight?'var(--text)':'var(--text2)'}">${row.l}</div>
+          ${row.note?`<div style="font-size:10px;color:var(--text3);margin-top:1px">${row.note}</div>`:''}
+        </div>
+        <div style="font-size:14px;font-weight:700;color:${row.highlight?'var(--gold)':row.dim?'var(--text3)':'var(--text)'};white-space:nowrap">${row.v}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Expense split (editable) -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px">YOUR MONTHLY EXPENSES</div>
+    <div class="card" style="margin-bottom:18px">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.55">Set what percentage of your take-home goes to each category. You can adjust this at any point during the game.</p>
+      ${[
+        {key:'rent',label:'Rent',min:5,max:50},
+        {key:'food',label:'Food & groceries',min:3,max:25},
+        {key:'transport',label:'Transport',min:1,max:20},
+      ].map(e=>`
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:14px;font-weight:600">${e.label}</span>
+          <span style="font-size:14px;font-weight:700;color:var(--gold)">
+            <span id="prf_${e.key}_pct">${G.expenses[e.key]}</span>%&nbsp;&nbsp;<span style="color:var(--text2);font-size:13px" id="prf_${e.key}_amt">${fmtINR(TAKE_HOME*G.expenses[e.key]/100)}</span>/mo
+          </span>
+        </div>
+        <input type="range" class="gold" id="prf_${e.key}" min="${e.min}" max="${e.max}" step="1" value="${G.expenses[e.key]}">
+      </div>`).join('')}
+      <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text3)">
+        <span>Total on rent + food + transport</span>
+        <span id="prfTotalPct" style="font-weight:600">${totalExpPct}% = ${fmtINR(TAKE_HOME*totalExpPct/100)}/mo</span>
+      </div>
+    </div>
+
+    <!-- Starting balances -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px">STARTING BALANCES</div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px">
+      ${[
+        {l:'Existing savings',v:'₹1,80,000',c:'var(--text)',n:'Accumulated from internships and family'},
+        {l:'Emergency fund',v:'₹0',c:'#d45678',n:'Aim: 3–6 months of expenses'},
+        {l:'Outstanding debt',v:'₹0',c:'#1a9e75',n:'Clean start — no loans'},
+      ].map((r,i,a)=>`
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 16px;${i<a.length-1?'border-bottom:1px solid var(--border);':''}">
+        <div>
+          <div style="font-size:13px;color:var(--text2)">${r.l}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:1px">${r.n}</div>
+        </div>
+        <div style="font-size:14px;font-weight:700;color:${r.c};white-space:nowrap">${r.v}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Insurance -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px">INSURANCE</div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px">
+      ${[
+        {l:'Life insurance',v:'None',c:'#d45678',n:''},
+        {l:'Health insurance',v:'₹5,00,000',c:'#1a9e75',n:'Employer group cover — not portable if you leave'},
+        {l:'Term plan',v:'Not yet taken',c:'var(--text3)',n:''},
+      ].map((r,i,a)=>`
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:11px 16px;${i<a.length-1?'border-bottom:1px solid var(--border);':''}">
+        <div>
+          <div style="font-size:13px;color:var(--text2)">${r.l}</div>
+          ${r.n?`<div style="font-size:10px;color:var(--text3);margin-top:1px">${r.n}</div>`:''}
+        </div>
+        <div style="font-size:14px;font-weight:700;color:${r.c};white-space:nowrap">${r.v}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Dependants -->
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px">YOUR SITUATION</div>
+    <div class="card" style="margin-bottom:24px">
+      <div style="margin-bottom:14px">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:6px">Who depends on you financially?</div>
+        <select id="depSelect">
+          ${DEPENDANTS_OPTS.map(o=>`<option value="${o.v}" ${G.dependants===o.v?'selected':''}>${o.l}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px">
+        <span style="color:var(--text2)">City</span>
+        <span style="color:var(--text)">Bengaluru · Renting</span>
+      </div>
+    </div>
+
+    <button class="btn btn-gold" id="toSipBtn">Set up my investments →</button>
+    <div style="height:32px"></div>
+  </div>`;}
+
+function renderSipSetup(){
+  const alloc=ALLOCS.find(a=>a.id===G.allocation)||ALLOCS[0];
+  const fv=sipFV(G.sipBase,36,alloc.rate);
+  return`<div style="padding:32px 20px;max-width:580px;margin:0 auto" class="fu">
+    <div style="margin-bottom:22px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px">Age 24 · Investment setup</div>
+      <h2 class="serif" style="font-size:26px;margin-bottom:8px">Your SIP + allocation</h2>
+      <p style="color:var(--text2);font-size:14px;line-height:1.6">Choose how much to invest monthly and where it goes. Both shape your corpus at 60.</p>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div><div style="font-size:13px;color:var(--text2)">Monthly SIP</div><div style="font-size:11px;color:var(--text3)">of your take-home</div></div>
+        <span class="serif" id="sipDisp" style="font-size:26px;color:var(--gold)">₹${G.sipBase.toLocaleString('en-IN')}</span>
+      </div>
+      <input type="range" class="gold" id="sipSlider" min="2000" max="30000" step="1000" value="${G.sipBase}" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)"><span>₹2,000</span><span>₹30,000</span></div>
+    </div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">Where does the SIP go?</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${ALLOCS.map(a=>`
+        <button class="alloc-card ${G.allocation===a.id?'sel':''}" data-alloc="${a.id}"
+          style="${G.allocation===a.id?`border-color:${a.color};border-width:2px;background:${a.color}18;`:''}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+            <div>
+              <div style="font-weight:700;font-size:14px;color:${G.allocation===a.id?a.color:'var(--text)'}">${a.label}</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:1px">${a.desc}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;margin-left:10px">
+              <div style="font-size:13px;font-weight:700;color:${G.allocation===a.id?a.color:'var(--text2)'}">${a.rateLabel}</div>
+              <div style="font-size:10px;color:var(--text3)">Risk: ${a.risk}</div>
+            </div>
+          </div>
+          ${allocBars(a.bars)}
+        </button>`).join('')}
+      </div>
+    </div>
+    <div style="background:var(--gold-dim);border:1px solid rgba(212,175,55,0.25);border-radius:var(--rs);padding:16px;margin-bottom:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div><div style="font-size:12px;color:var(--text2)">If maintained for 36 years</div><div style="font-size:11px;color:var(--text3);margin-top:1px">at ${alloc.rateLabel} · ${alloc.label}</div></div>
+        <div class="serif" id="sipFvDisp" style="font-size:28px;color:var(--gold)">${fmt(Math.round(fv))}</div>
+      </div>
+    </div>
+    <button class="btn btn-gold" id="sipOk">Lock it in — start the journey →</button>
+    <div style="height:32px"></div>
+  </div>`;}
+
+function renderTransition(tIdx){
+  const t=TRANS[tIdx],p=PC[t.phase],yrs=60-t.age;
+  const curSip=G.sipBase+G.sipStepUps.reduce((s,su)=>s+su.delta,0);
+  const alloc=ALLOCS.find(a=>a.id===G.allocation)||ALLOCS[0];
+  const steps=[{delta:0,label:"Keep current SIP",sub:`${fmtINR(curSip)}/month`},{delta:2000,label:"+₹2,000/month",sub:`Up to ${fmtINR(curSip+2000)}/month`},{delta:5000,label:"+₹5,000/month",sub:`Up to ${fmtINR(curSip+5000)}/month`},{delta:10000,label:"+₹10,000/month",sub:`Up to ${fmtINR(curSip+10000)}/month`}];
+
+  return`<div style="padding:32px 20px;max-width:580px;margin:0 auto" class="fu">
+    <div style="font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:10px">Age ${t.age} · New phase</div>
+    <div style="display:inline-block;background:${p.bg};padding:5px 14px;border-radius:20px;margin-bottom:14px">
+      <span style="color:${p.color};font-weight:700;font-size:11px;letter-spacing:.5px">ENTERING: ${t.phase.toUpperCase()}</span>
+    </div>
+    <h2 class="serif" style="font-size:26px;margin-bottom:8px">Investment review</h2>
+    <p style="color:var(--text2);font-size:14px;line-height:1.65;margin-bottom:22px">Your SIP has been running. As you step into a new chapter, you can adjust how much you invest and where it goes.</p>
+
+    <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Step up your SIP?</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+      ${steps.map(o=>{const add=sipFV(o.delta,yrs,alloc.rate);return`<button class="sip-step" data-delta="${o.delta}" style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:13px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);cursor:pointer;font-family:inherit;color:var(--text);text-align:left;transition:all .15s">
+        <div><div style="font-weight:600;font-size:14px">${o.label}</div><div style="font-size:12px;color:var(--text2);margin-top:2px">${o.sub}</div></div>
+        ${o.delta>0?`<span style="background:var(--gold-dim);color:var(--gold);font-size:11px;font-weight:700;padding:3px 9px;border-radius:8px;white-space:nowrap;margin-left:10px">+${fmt(Math.round(add))} at 60</span>`:''}
+      </button>`;}).join('')}
+    </div>
+
+    <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px">Reallocate portfolio?</div>
+    <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Currently: <strong style="color:${alloc.color}">${alloc.label}</strong> · ${alloc.rateLabel}</p>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:24px">
+      ${ALLOCS.map(a=>{
+        const newFv=(()=>{const r=a.rate;let tt=sipFV(G.sipBase,36,r);for(const su of G.sipStepUps)tt+=sipFV(su.delta,60-su.atAge,r);return tt;})();
+        const diff=Math.round(newFv-totalSipFV());
+        return`<button class="realloc-btn" data-alloc="${a.id}" style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:11px 14px;background:${G.allocation===a.id?a.color+'18':'var(--bg2)'};border:${G.allocation===a.id?`2px solid ${a.color}`:'1px solid var(--border)'};border-radius:var(--rs);cursor:pointer;font-family:inherit;color:var(--text);text-align:left;transition:all .15s">
+          <div style="flex:1"><div style="font-weight:${G.allocation===a.id?700:500};font-size:13px;color:${G.allocation===a.id?a.color:'var(--text)'}">${a.label} <span style="font-size:11px;color:var(--text3);font-weight:400">${a.desc}</span></div><div style="margin-top:4px">${allocBars(a.bars)}</div></div>
+          <div style="text-align:right;flex-shrink:0;margin-left:12px">
+            <div style="font-size:12px;font-weight:700;color:${G.allocation===a.id?a.color:'var(--text2)'}">${a.rateLabel}</div>
+            ${G.allocation!==a.id&&diff!==0?`<div style="font-size:11px;color:${diff>0?'#1a9e75':'#d45678'}">${diff>0?'+':''}${fmt(diff)} SIP</div>`:''}
+            ${G.allocation===a.id?`<div style="font-size:10px;color:var(--text3)">current</div>`:''}
+          </div>
+        </button>`;}).join('')}
+    </div>
+    <button class="btn btn-gold" id="transDone">Continue →</button>
+    <div style="height:32px"></div>
+  </div>`;}
+
+function renderEvent(){
+  const ev=EVENTS[G.idx],p=PC[ev.phase],prog=(G.idx/EVENTS.length)*100;
+  return`<div class="fu">
+    <div style="height:3px;background:var(--border)"><div style="height:100%;background:${p.color};width:${prog}%;transition:width .4s"></div></div>
+    ${corpusAndDebtMeters()}
+    <div style="padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
+      ${badge(ev.phase)}
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn-sm" id="expToggle">📊 Budget</button>
+        <div style="text-align:right">
+          <div style="font-size:19px;font-weight:700">Age ${ev.age}</div>
+          <div style="font-size:12px;color:var(--text3)">${G.idx+1} of ${EVENTS.length}</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:18px 20px;max-width:640px;margin:0 auto">
+      ${expensePanel()}
+      <h2 class="serif" style="font-size:26px;margin-bottom:14px">${ev.title}</h2>
+      <div style="background:var(--bg2);border-radius:var(--r);padding:16px;border-left:3px solid ${p.color};border-top-left-radius:0;border-bottom-left-radius:0;margin-bottom:22px">
+        <p style="font-size:15px;line-height:1.78">${ev.scenario}</p>
+      </div>
+      <p style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:10px">What do you do?</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px">
+        ${ev.choices.map(c=>`
+        <button class="choice" data-id="${c.id}" data-corpus="${c.corpus}"
+          style="display:flex;align-items:flex-start;gap:12px;width:100%;padding:13px 16px;background:${G.picked?.id===c.id?p.bg:'var(--bg2)'};border:${G.picked?.id===c.id?`2px solid ${p.color}`:'1px solid var(--border)'};border-radius:var(--rs);cursor:pointer;font-family:inherit;color:var(--text);font-size:15px;line-height:1.55;text-align:left;transition:all .15s">
+          <span style="width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;${G.picked?.id===c.id?`background:${p.color};color:#0b0b15;`:`border:1px solid var(--border2);color:var(--text3);`}">${c.id}</span>
+          ${c.text}${c.loan?`<span style="margin-left:auto;flex-shrink:0;font-size:10px;background:var(--red-dim);color:var(--red);padding:2px 7px;border-radius:8px;white-space:nowrap;margin-top:2px">loan</span>`:''}
+        </button>`).join('')}
+      </div>
+      <button class="btn btn-gold" id="confirmBtn" ${G.picked?'':'disabled'}>
+        ${G.idx<EVENTS.length-1?'Continue →':'Complete journey →'}
+      </button>
+      <div style="height:32px"></div>
+    </div>
+  </div>`;}
+
+function renderSatisfaction(){
+  const rated=Object.keys(G.ratings).length,total=G.decisions.length;
+  return`<div style="padding:32px 20px;max-width:600px;margin:0 auto" class="fu">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:40px;margin-bottom:12px">🪞</div>
+      <h1 class="serif" style="font-size:28px;margin-bottom:8px">Looking back</h1>
+      <p style="color:var(--text2);font-size:15px;line-height:1.65">${G.name}'s journey is complete.<br>For each moment, how satisfied do you feel about the choice made?</p>
+      <p style="font-size:12px;color:var(--text3);margin-top:8px" id="rc">${rated} of ${total} rated</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+      ${G.decisions.map(d=>{const dp=PC[d.phase],r=G.ratings[d.id]||0;return`
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px">
+          <div style="background:${dp.bg};border-radius:var(--rs);padding:5px 9px;flex-shrink:0"><div style="font-size:10px;font-weight:700;color:${dp.color};letter-spacing:.5px">AGE ${d.age}</div></div>
+          <div><div style="font-weight:600;font-size:14px">${d.title}</div><div style="font-size:12px;color:var(--text2)">${d.tag}</div></div>
+        </div>
+        <div style="display:flex;gap:4px" id="st${d.id}">
+          ${[1,2,3,4,5].map(s=>`<button class="star" data-e="${d.id}" data-v="${s}" style="background:none;border:none;cursor:pointer;font-size:22px;padding:2px;line-height:1;opacity:${r>=s?1:.15}">${r>=s?'⭐':'☆'}</button>`).join('')}
+        </div>
+      </div>`;}).join('')}
+    </div>
+    <button class="btn btn-gold" id="toRes" ${rated===total?'':'disabled'}>See the full picture →</button>
+    <div style="height:32px"></div>
+  </div>`;}
+
+function renderResults(){
+  const corpus=projected(),cp=pctBar(corpus);
+  const avgSat=G.decisions.length>0?G.decisions.reduce((s,d)=>s+(G.ratings[d.id]||0),0)/G.decisions.length:0;
+  const cScore=Math.min(50,Math.round((corpus-30)/(760-30)*50));
+  const sScore=Math.round(avgSat*10);
+  const total=cScore+sScore;
+  const sweet=G.decisions.filter(d=>d.corpus>10&&(G.ratings[d.id]||0)>=4);
+  const lifeChoice=G.decisions.filter(d=>d.corpus<=0&&(G.ratings[d.id]||0)>=4);
+  const alloc=ALLOCS.find(a=>a.id===G.allocation)||ALLOCS[0];
+  const dep=DEPENDANTS_OPTS.find(d=>d.v===G.dependants)?.l||'None';
+
+  return`<div style="padding:28px 20px;max-width:640px;margin:0 auto" class="fu">
+    <div style="text-align:center;margin-bottom:22px">
+      <div style="font-size:40px;margin-bottom:10px">🏁</div>
+      <h1 class="serif" style="font-size:30px;margin-bottom:4px">${G.name} at 60</h1>
+      <p style="color:var(--text2);font-size:14px">Dependants: ${dep} · Portfolio: ${alloc.label}</p>
+    </div>
+
+    <div class="card" style="text-align:center;margin-bottom:14px;padding:24px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:8px">Estimated corpus at 60</div>
+      <div class="serif" style="font-size:54px;color:var(--gold);line-height:1">${fmt(corpus)}</div>
+      <div style="margin-top:14px"><div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:100%;background:linear-gradient(90deg,#9b7b20,var(--gold),#e8cc6e);width:${cp}%;border-radius:3px"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--text3)"><span>₹30L</span><span>₹7.5 Cr</span></div></div>
+      <div style="display:flex;justify-content:center;gap:12px;margin-top:12px;flex-wrap:wrap;font-size:12px">
+        <span style="color:var(--text3)">Base ₹2Cr</span><span style="color:var(--text3)">·</span>
+        <span style="color:${evImpact()>=0?'#1a9e75':'#d45678'}">${evImpact()>=0?'+':''}${fmt(evImpact())} decisions</span><span style="color:var(--text3)">·</span>
+        <span style="color:var(--gold)">+${fmt(Math.round(totalSipFV()))} SIP</span>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <div class="card" style="text-align:center;padding:16px 10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:6px">Journey score</div><div class="serif" style="font-size:36px;color:var(--gold)">${total}</div><div style="font-size:11px;color:var(--text3)">out of 100</div></div>
+      <div class="card" style="text-align:center;padding:16px 10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:6px">Wealth score</div><div class="serif" style="font-size:36px;color:#6e6bcf">${cScore}</div><div style="font-size:11px;color:var(--text3)">out of 50</div></div>
+      <div class="card" style="text-align:center;padding:16px 10px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:6px">Life score</div><div class="serif" style="font-size:36px;color:#1a9e75">${sScore}</div><div style="font-size:11px;color:var(--text3)">out of 50</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div><div style="font-size:14px;font-weight:600">Sweet spots</div><div style="font-size:11px;color:var(--text3)">Decisions that felt right and built well</div></div>
+        <div class="serif" style="font-size:30px;color:var(--gold)">${sweet.length}<span style="font-size:15px;color:var(--text3)">/15</span></div>
+      </div>
+      ${sweet.length>0?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${lifeChoice.length?8:0}px">${sweet.map(d=>`<span style="background:var(--gold-dim);color:var(--gold);padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600">Age ${d.age}: ${d.title}</span>`).join('')}</div>`:''}
+      ${lifeChoice.length>0?`<div style="${sweet.length?'margin-top:8px;padding-top:8px;border-top:1px solid var(--border);':''}"><div style="font-size:11px;color:var(--text3);margin-bottom:6px">High satisfaction · lower corpus impact</div><div style="display:flex;flex-wrap:wrap;gap:6px">${lifeChoice.map(d=>`<span style="background:rgba(26,158,117,0.1);color:#1a9e75;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:600">Age ${d.age}: ${d.title}</span>`).join('')}</div></div>`:''}
+    </div>
+
+    <div class="card" style="margin-bottom:14px"><div style="font-size:13px;color:var(--text2);margin-bottom:14px">Corpus trajectory — projected at 60 across the journey</div><canvas id="cc" height="180"></canvas></div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Every moment, every choice</div>
+      ${G.decisions.map(d=>{const dp=PC[d.phase],r=G.ratings[d.id]||0,pos=d.corpus>0,neg=d.corpus<0;return`
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+        <div style="width:3px;height:36px;border-radius:2px;background:${dp.color};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Age ${d.age}: ${d.title}</div><div style="font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.tag}</div></div>
+        <div style="font-size:12px;font-weight:700;color:${pos?'#1a9e75':neg?'#d45678':'var(--text3)'};flex-shrink:0;min-width:48px;text-align:right">${d.corpus>0?'+':''}${fmt(d.corpus)}</div>
+        <div style="flex-shrink:0">${[1,2,3,4,5].map(s=>`<span style="font-size:12px;opacity:${r>=s?1:.15}">⭐</span>`).join('')}</div>
+      </div>`;}).join('')}
+    </div>
+
+    <button class="btn btn-ghost" id="resetBtn">↩ Play again</button>
+    <div style="height:48px"></div>
+  </div>`;}
+
+// ─── CHART ─────────────────────────────────────────────────────────────────────
+function initChart(){
+  const el=document.getElementById('cc');
+  if(!el||typeof Chart==='undefined')return;
+  const labels=G.log.map(p=>`Age ${p.age}`),data=G.log.map(p=>parseFloat((p.corpus/100).toFixed(2)));
+  new Chart(el,{type:'line',data:{labels,datasets:[{data,borderColor:'#d4af37',backgroundColor:'rgba(212,175,55,0.07)',fill:true,tension:.35,pointBackgroundColor:'#d4af37',pointBorderColor:'#0b0b15',pointBorderWidth:2,pointRadius:5,borderWidth:2}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:'#13131f',borderColor:'#2a2a3e',borderWidth:1,titleColor:'#9896a0',bodyColor:'#f0ede4',padding:10,callbacks:{label:ctx=>`₹${ctx.parsed.y.toFixed(2)} Cr`}}},scales:{x:{ticks:{color:'#4e4c5e',font:{size:10}},grid:{color:'rgba(42,42,62,.5)'}},y:{ticks:{color:'#4e4c5e',font:{size:10},callback:v=>`₹${v}Cr`},grid:{color:'rgba(42,42,62,.5)'},beginAtZero:false}}}});}
+
+// ─── RENDER ────────────────────────────────────────────────────────────────────
+function render(){
+  const app=document.getElementById('app');
+  if(G.screen==='intro')         app.innerHTML=renderIntro();
+  else if(G.screen==='profile')  app.innerHTML=renderProfile();
+  else if(G.screen==='sip')      app.innerHTML=renderSipSetup();
+  else if(G.screen==='event')    app.innerHTML=renderEvent();
+  else if(G.screen==='sat')      app.innerHTML=renderSatisfaction();
+  else if(G.screen==='results')  {app.innerHTML=renderResults();setTimeout(initChart,120);}
+  else if(G.screen.startsWith('tr-')){const i=parseInt(G.screen.split('-')[1]);app.innerHTML=renderTransition(i);}
+  bind();
+}
+
+// ─── BIND ──────────────────────────────────────────────────────────────────────
+function bind(){
+  const $=id=>document.getElementById(id);
+
+  // INTRO
+  const ni=$('ni');
+  if(ni){ni.addEventListener('input',e=>{G.name=e.target.value;const b=$('startBtn');if(b)b.disabled=!G.name.trim();});ni.addEventListener('keydown',e=>{if(e.key==='Enter'&&G.name.trim()){G.screen='profile';render();}});}
+  const sb=$('startBtn');if(sb)sb.onclick=()=>{if(G.name.trim()){G.screen='profile';render();}};
+
+  // PROFILE — expense sliders
+  ['rent','food','transport'].forEach(k=>{
+    const sl=$(`prf_${k}`);
+    if(sl)sl.addEventListener('input',()=>{
+      G.expenses[k]=parseInt(sl.value);
+      const pp=$(`prf_${k}_pct`),pa=$(`prf_${k}_amt`);
+      if(pp)pp.textContent=G.expenses[k];
+      if(pa)pa.textContent=fmtINR(TAKE_HOME*G.expenses[k]/100);
+      const tp=$('prfTotalPct'),tot=G.expenses.rent+G.expenses.food+G.expenses.transport;
+      if(tp)tp.textContent=`${tot}% = ${fmtINR(TAKE_HOME*tot/100)}/mo`;
+    });
+  });
+  const dep=$('depSelect');if(dep)dep.addEventListener('change',e=>G.dependants=e.target.value);
+  const tsp=$('toSipBtn');if(tsp)tsp.onclick=()=>{G.screen='sip';render();};
+
+  // SIP SETUP
+  const sl=$('sipSlider');
+  if(sl)sl.addEventListener('input',()=>{
+    G.sipBase=parseInt(sl.value);
+    const sd=$('sipDisp');if(sd)sd.textContent=`₹${G.sipBase.toLocaleString('en-IN')}`;
+    const a=ALLOCS.find(x=>x.id===G.allocation)||ALLOCS[0];
+    const fd=$('sipFvDisp');if(fd)fd.textContent=fmt(Math.round(sipFV(G.sipBase,36,a.rate)));
+  });
+  document.querySelectorAll('.alloc-card').forEach(btn=>{
+    btn.onclick=()=>{
+      G.allocation=btn.dataset.alloc;
+      document.querySelectorAll('.alloc-card').forEach(b=>{const a=ALLOCS.find(x=>x.id===b.dataset.alloc),sel=G.allocation===b.dataset.alloc;b.style.borderColor=sel?a.color:'var(--border)';b.style.borderWidth=sel?'2px':'1px';b.style.background=sel?`${a.color}18`:'var(--bg2)';});
+      const a=ALLOCS.find(x=>x.id===G.allocation)||ALLOCS[0];
+      const fd=$('sipFvDisp');if(fd)fd.textContent=fmt(Math.round(sipFV(G.sipBase,36,a.rate)));
+    };
+  });
+  const sok=$('sipOk');if(sok)sok.onclick=()=>{G.log.push({age:24,corpus:projected()});G.screen='event';render();};
+
+  // TRANSITION
+  let chosenDelta=0;
+  document.querySelectorAll('.sip-step').forEach(btn=>{
+    btn.onclick=()=>{
+      chosenDelta=parseInt(btn.dataset.delta);
+      document.querySelectorAll('.sip-step').forEach(b=>{const s=parseInt(b.dataset.delta)===chosenDelta;b.style.borderColor=s?'var(--gold)':'var(--border)';b.style.borderWidth=s?'2px':'1px';b.style.background=s?'var(--gold-dim)':'var(--bg2)';});
+    };
+  });
+  document.querySelectorAll('.realloc-btn').forEach(btn=>{
+    btn.onclick=()=>{
+      G.allocation=btn.dataset.alloc;
+      document.querySelectorAll('.realloc-btn').forEach(b=>{const a=ALLOCS.find(x=>x.id===b.dataset.alloc),sel=G.allocation===b.dataset.alloc;b.style.borderColor=sel?a.color:'var(--border)';b.style.borderWidth=sel?'2px':'1px';b.style.background=sel?`${a.color}18`:'var(--bg2)';});
+    };
+  });
+  const td=$('transDone');
+  if(td)td.onclick=()=>{
+    const tIdx=parseInt(G.screen.split('-')[1]),age=TRANS[tIdx].age;
+    if(chosenDelta>0){const ex=G.sipStepUps.find(s=>s.atAge===age);if(ex)ex.delta=chosenDelta;else G.sipStepUps.push({atAge:age,delta:chosenDelta});}
+    advanceDebts(G.idx>0?EVENTS[G.idx-1]?.age||24:24,age);
+    G.log.push({age,corpus:projected()});
+    chosenDelta=0;G.screen='event';render();
+  };
+
+  // EVENT — expense panel
+  const et=$('expToggle');
+  if(et)et.onclick=()=>{G.expPanelOpen=!G.expPanelOpen;const p=$('expPanel');if(p)p.style.display=G.expPanelOpen?'block':'none';};
+  ['rent','food','transport'].forEach(k=>{
+    const s=$(`slider_${k}`);
+    if(s)s.addEventListener('input',()=>{
+      G.expenses[k]=parseInt(s.value);
+      const pp=$(`exp${k}Pct`),pa=$(`exp${k}Amt`);
+      if(pp)pp.textContent=G.expenses[k];
+      if(pa)pa.textContent=fmtINR(TAKE_HOME*G.expenses[k]/100);
+    });
+  });
+  const rb=$('resetExpBtn');
+  if(rb)rb.onclick=()=>{G.expenses={rent:20,food:10,transport:5};G.expPanelOpen=true;render();};
+
+  // EVENT — choices
+  document.querySelectorAll('.choice').forEach(btn=>{
+    btn.onclick=()=>{
+      const id=btn.dataset.id,ev=EVENTS[G.idx],c=ev.choices.find(x=>x.id===id),p=PC[ev.phase];
+      G.picked=G.picked?.id===id?null:c;
+      document.querySelectorAll('.choice').forEach(b=>{const sel=G.picked?.id===b.dataset.id;b.style.borderColor=sel?p.color:'var(--border)';b.style.borderWidth=sel?'2px':'1px';b.style.background=sel?p.bg:'var(--bg2)';const l=b.querySelector('span');if(l){l.style.background=sel?p.color:'transparent';l.style.color=sel?'#0b0b15':'var(--text3)';l.style.border=sel?'none':'1px solid var(--border2)';}});
+      const num=$('corpusNum'),fill=$('corpusFill');
+      if(num){const d=G.picked?projected(G.picked.corpus):projected();num.textContent=fmt(d);num.style.color=G.picked?(G.picked.corpus>=0?'#e8cc6e':'#d45678'):'var(--gold)';if(fill)fill.style.width=pctBar(d)+'%';}
+      const cb=$('confirmBtn');if(cb)cb.disabled=!G.picked;
+    };
+  });
+
+  const cb=$('confirmBtn');
+  if(cb)cb.onclick=()=>{
+    if(!G.picked)return;
+    const ev=EVENTS[G.idx];
+    if(G.picked.loan) addDebt(G.picked.loan,ev.age);
+    G.decisions.push({id:ev.id,age:ev.age,title:ev.title,phase:ev.phase,tag:G.picked.tag,corpus:G.picked.corpus,hasLoan:!!G.picked.loan});
+    G.log.push({age:ev.age,corpus:projected()});
+    G.picked=null;
+    const next=G.idx+1;
+    if(next>=EVENTS.length){advanceDebts(ev.age,60);G.log.push({age:60,corpus:projected()});G.screen='sat';render();}
+    else if(TRANS[next]){G.idx=next;G.screen=`tr-${next}`;render();}
+    else{advanceDebts(ev.age,EVENTS[next].age);G.idx=next;G.screen='event';render();}
+  };
+
+  // SATISFACTION
+  document.querySelectorAll('.star').forEach(btn=>{
+    btn.onclick=()=>{
+      const eid=parseInt(btn.dataset.e),val=parseInt(btn.dataset.v);G.ratings[eid]=val;
+      const c=document.getElementById(`st${eid}`);if(c)c.querySelectorAll('.star').forEach((s,i)=>{const lit=val>=(i+1);s.textContent=lit?'⭐':'☆';s.style.opacity=lit?1:.15;});
+      const rated=Object.keys(G.ratings).length,rc=$('rc'),tr=$('toRes');
+      if(rc)rc.textContent=`${rated} of ${G.decisions.length} rated`;if(tr)tr.disabled=rated<G.decisions.length;
+    };
+  });
+  const tr=$('toRes');if(tr)tr.onclick=()=>{G.screen='results';render();};
+
+  // RESULTS
+  const rstBtn=$('resetBtn');
+  if(rstBtn)rstBtn.onclick=()=>{G={screen:'intro',name:'',expenses:{rent:20,food:10,transport:5},dependants:'none',sipBase:5000,sipStepUps:[],allocation:'equity',allocHistory:[],idx:0,decisions:[],picked:null,ratings:{},log:[],debts:[],expPanelOpen:false};render();};
+}
+
+render();
+</script>
+</body>
+</html>
